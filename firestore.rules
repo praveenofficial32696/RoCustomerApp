@@ -1,0 +1,138 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId} (matches request.auth.uid)
+// Fields:
+//   - name: string (required)
+//   - email: string (required)
+//   - phone: string (required, 10 digits)
+//   - address: string
+//   - roModel: string
+//   - role: string (enum: ['customer', 'admin', 'technician'])
+//   - createdAt: timestamp (required)
+//
+// Collection: bookings
+// Document ID: RHY{number} (e.g., RHY0001)
+// Fields:
+//   - uid: string (required, matches request.auth.uid)
+//   - bookingId: string (required)
+//   - bookedDate: string (required, ISO 8601)
+//   - createdAt: string (required, ISO 8601)
+//   - customerAddress: string
+//   - customerName: string (required)
+//   - customerNumber: string (required)
+//   - isComplaint: boolean (required)
+//   - roModel: string
+//   - serviceType: string (required, enum: ['Service Request', 'Installation', 'Reinstallation'])
+//   - status: string (required, enum: ['open', 'cancelled', 'InProcess', 'closed'])
+//   - technician: map (required)
+//     - name: string
+//     - phone: string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "smartpraveen108@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isTechnician() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'technician';
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?.*Z?$");
+    }
+
+    function isValidUser(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.phone is string && (data.phone.size() == 0 || data.phone.matches("^[0-9]{10}$")) &&
+             (!('role' in data) || data.role in ['customer', 'admin', 'technician']) &&
+             (!('address' in data) || (data.address is string && data.address.size() < 500)) &&
+             (!('roModel' in data) || (data.roModel is string && data.roModel.size() < 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function roleUnchanged() {
+      return !('role' in resource.data) || 
+             !('role' in request.resource.data) || 
+             request.resource.data.role == resource.data.role;
+    }
+
+    function isValidBooking(data) {
+      return data.uid is string &&
+             data.bookingId is string &&
+             data.serviceType in ['Service Request', 'Installation', 'Reinstallation'] &&
+             data.status in ['open', 'cancelled', 'InProcess', 'closed'] &&
+             (isValidDateString(data.bookedDate) || data.bookedDate is timestamp) &&
+             (isValidDateString(data.createdAt) || data.createdAt is timestamp) &&
+             data.customerName is string &&
+             data.customerNumber is string &&
+             data.isComplaint is bool &&
+             (!('customerAddress' in data) || data.customerAddress is string) &&
+             (!('roModel' in data) || data.roModel is string) &&
+             (!('closedAt' in data) || (isValidDateString(data.closedAt) || data.closedAt is timestamp)) &&
+             (!('closedDate' in data) || (isValidDateString(data.closedDate) || data.closedDate is timestamp)) &&
+             (!('billing' in data) || data.billing is map) &&
+             data.technician is map && 
+             data.technician.keys().hasAll(['name', 'phone']) &&
+             data.technician.name is string &&
+             data.technician.phone is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /counters/{counterId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && ('role' in request.resource.data) && request.resource.data.role == 'customer' && ('createdAt' in request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && roleUnchanged()) || isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || 
+        isAdmin() || 
+        (isTechnician() && resource.data.technician.phone == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phone)
+      );
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid && isValidBooking(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin()) && isValidBooking(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

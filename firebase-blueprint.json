@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User's profile information and role.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the user." },
+        "email": { "type": "string", "description": "Email address of the user." },
+        "phone": { "type": "string", "description": "Phone number of the user." },
+        "address": { "type": "string", "description": "Physical address of the user." },
+        "roModel": { "type": "string", "description": "The model of the RO device." },
+        "role": { "type": "string", "enum": ["customer", "admin", "technician"], "description": "The user's role in the system." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The timestamp when the user was created." }
+      },
+      "required": ["name", "email", "phone", "role", "createdAt"]
+    },
+    "Booking": {
+      "title": "Service Booking",
+      "description": "A service request booking.",
+      "type": "object",
+      "properties": {
+        "bookedDate": { "type": "string", "format": "date-time", "description": "Preferred date and time for the service." },
+        "bookingId": { "type": "string", "description": "Unique booking ID (e.g., RHY0001)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the booking was created." },
+        "customerAddress": { "type": "string", "description": "Customer's physical address." },
+        "customerName": { "type": "string", "description": "Customer's full name." },
+        "customerNumber": { "type": "string", "description": "Customer's phone number." },
+        "isComplaint": { "type": "boolean", "description": "Whether the booking is a complaint." },
+        "roModel": { "type": "string", "description": "The model of the RO device." },
+        "serviceType": { "type": "string", "enum": ["Service Request", "Installation", "Reinstallation"], "description": "Type of service requested." },
+        "status": { "type": "string", "enum": ["open", "cancelled", "InProcess", "closed"], "description": "Current status of the booking." },
+        "closedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the booking was closed." },
+        "closedDate": { "type": "string", "format": "date-time", "description": "Timestamp when the booking was closed (alias)." },
+        "uid": { "type": "string", "description": "The user ID who made the booking." },
+        "billing": {
+          "type": "object",
+          "properties": {
+            "serviceFee": { "type": "number" },
+            "discount": { "type": "number" },
+            "warranty": { "type": "string" },
+            "spareParts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "partName": { "type": "string" },
+                  "price": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "technician": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "phone": { "type": "string" }
+          }
+        }
+      },
+      "required": ["uid", "bookingId", "bookedDate", "createdAt", "customerName", "customerNumber", "serviceType", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Service booking documents."
+    }
+  }
+}
